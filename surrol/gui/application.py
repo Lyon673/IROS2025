@@ -12,7 +12,6 @@ from surrol.const import ASSET_DIR_PATH
 import numpy as np
 import time
 import cv2
-from direct.showbase.ShowBase import ShowBase
 from panda3d.core import FrameBufferProperties, WindowProperties
 from panda3d.core import GraphicsPipe, GraphicsOutput
 from panda3d.core import Texture
@@ -32,8 +31,8 @@ class ApplicationConfig:
         self.ambient_occlusion = kwargs.get('ambient_occlusion', False)
 
         # Window config
-        self.window_width = kwargs.get('window_width', 640)
-        self.window_height = kwargs.get('window_height', 512)
+        self.window_width = kwargs.get('window_width', 2560)
+        self.window_height = kwargs.get('window_height', 1600)
         self.window_title = kwargs.get('window_title', 'SurRoL Simulator')
     
     @staticmethod
@@ -95,7 +94,7 @@ class Application(ShowBase):
         # Window properties
         properties = WindowProperties()
         properties.setSize(cfg.window_width, cfg.window_height)
-        properties.setFixedSize(True)
+        properties.setFixedSize(False)
         properties.setTitle(cfg.window_title)
         self.win.requestProperties(properties)
 

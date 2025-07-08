@@ -69,6 +69,9 @@ class Psm(Arm):
 
         self._jaw_angle = self.get_current_jaw_position() / 2
 
+        p.changeDynamics(self.body, linkIndex=6, lateralFriction=3.0, spinningFriction=0.3, rollingFriction=0.3)
+        p.changeDynamics(self.body, linkIndex=7, lateralFriction=3.0, spinningFriction=0.3, rollingFriction=0.3)
+
     def get_current_jaw_position(self) -> float:
         """ Get the current angle of the jaw in radians. """
         positions = get_joint_positions(self.body, (6, 7))
@@ -81,7 +84,7 @@ class Psm(Arm):
 
     def open_jaw(self) -> bool:
         """ Open the tool jaw. """
-        return self.move_jaw(np.deg2rad(80.0))
+        return self.move_jaw(np.deg2rad(70.0))
 
     def move_jaw(self, angle_radian: float) -> bool:
         """ Set the jaw tool to angle_radian in radians without actual move. """
@@ -93,7 +96,7 @@ class Psm(Arm):
                                     joint,  # jaw joints
                                     p.POSITION_CONTROL,
                                     targetPosition=position,
-                                    force=2.)  # TODO: not sure about the force, need tune
+                                    force=50.)  # TODO: not sure about the force, need tune
         return True
 
     def _get_joint_positions_all(self, abs_input):
@@ -135,7 +138,7 @@ class Psm(Arm):
                                parentFramePosition=[0, 0, 0],
                                childFramePosition=[0, 0, 0])
         p.changeConstraint(c, gearRatio=-1)
-
+        """
         # p2p joint: top-end
         c = p.createConstraint(self.body,
                                11,
@@ -170,10 +173,13 @@ class Psm(Arm):
                                parentFramePosition=[0.15 - 0.096269, 0.0 - 0.0, -0.0002 - 0.047551],
                                childFramePosition=[0.096 - 0.25683, 0.0 - -0.010348, -0.0002 - 0.0])
         p.changeConstraint(c, gearRatio=-1, maxForce=0.01)
+        """
 
 
 class Psm1(Psm):
     NAME = 'PSM1'
+    def __init__(self, pos=(0, 0, 0.1524), orn=(0, 0, 0, 1), scaling=1):
+        super().__init__(pos, orn, scaling)
 
 
 class Psm2(Psm):

@@ -79,7 +79,7 @@ int initTouch_right()
     }
 
     printf("Haptic Calibration\n");
-    printf("Found haptic device: %s.\n\n", hdGetString(HD_DEVICE_MODEL_TYPE));
+    printf("Found haptic device (right): %s.\n\n", hdGetString(HD_DEVICE_MODEL_TYPE));
 
     /* Choose a calibration style.  Some devices may support multiple types of 
        calibration.  In that case, prefer auto calibration over inkwell 
@@ -163,7 +163,7 @@ int initTouch_left()
     }
 
     printf("Haptic Calibration\n");
-    printf("Found haptic device: %s.\n\n", hdGetString(HD_DEVICE_MODEL_TYPE));
+    printf("Found haptic device(left): %s.\n\n", hdGetString(HD_DEVICE_MODEL_TYPE));
 
     /* Choose a calibration style.  Some devices may support multiple types of 
        calibration.  In that case, prefer auto calibration over inkwell 
@@ -234,7 +234,7 @@ int initTouch_left()
 
 void startScheduler()
 {
-     HDErrorInfo error;
+    HDErrorInfo error;
     hdStartScheduler();
     if (HD_DEVICE_ERROR(error = hdGetError()))
     {

@@ -1,0 +1,11 @@
+W_d=5.0
+W_dp=1.5
+W_dpv=1.5
+W_dv=1.5
+W_p=5.0
+W_pv=0.1
+W_v=3.0
+Y_base=0.01
+tau_d=1.0
+tau_p=0.7
+tau_v=1.0
