@@ -66,7 +66,7 @@ velocity_deque_R = deque(maxlen=8)
 
 pupilL = deque(maxlen=128)
 pupilR = deque(maxlen=128)
-gazePoint = np.array([0.5,0.5])
+gazePoint = np.array([320,180])
 scale = deque(maxlen=10)
 velocity_deque = deque(maxlen=8)
 psmPosePre = np.zeros(4)
@@ -80,7 +80,7 @@ last_button_stateL = 0
 last_button_stateR = 0
 
 
-clutch_times_list = [0]
+clutch_times_list = [0, 0]
 total_distance_list = [0]
 total_time_list = [0]
 test_scale = True
@@ -127,6 +127,7 @@ init_params = {
 	'W_d': 1.0,	 
 	'W_p': 1.0,	  
 	'W_v': 1.0,	 
+	'W_s': 1.0,
 	'W_dp': 0.5,	
 	'W_dv': 0.5,	 
 	'W_pv': 0.5,	
@@ -136,7 +137,10 @@ init_params = {
 	'W_pvs': 0.5,	
 	'W_dpvs': 0.5, 
 
-	'C_offset': config.feature_bound['C_offset']
+	'C_offset': config.feature_bound['C_offset'],
+
+	'fixed_scale': 1.0,  
+	'AFflag': 0 # 0-adaptive, 1-fixed
 }
 
 class DataCollector:
@@ -206,12 +210,12 @@ class DataCollector:
 		last_button_stateR = 0
 		
 		# Reset statistical variables
-		clutch_times_list = [0]
+		clutch_times_list = [0,0]
 		total_distance_list = [0]
 		total_time_list = [0]
 		
 		# Reset other variables
-		gazePoint = np.array([0.5, 0.5])
+		gazePoint = np.array([320, 180])
 		start_time = time.time()
 		
 		print("全局变量已重置，准备开始新的数据收集...")
@@ -347,7 +351,7 @@ class DataCollector:
 		# calculate and publish scale
 		
 		#print(f"<LYON> Using parameters: {params}")
-		scale= scale_cal(data[1],distance, mtm_velocity, ipaL_data, ipaR_data, self.params,distance_psms)
+		scale= scale_cal(data[1],distance, mtm_velocity, ipaL_data, ipaR_data, self.params, distance_psms)
 		try:  
 			self.scale_pub.publish(scale)
 		except rospy.ROSException as e:
@@ -507,7 +511,7 @@ def cal_robot_data(data,velocity_deque):
 
 
 	# TODO: check the timestamp correction for calculating gracefulness in the file <gracefulness.py> 
-	psm_3d_pos_time = np.append(psm_3d_position,data[0]*1e-6)
+	psm_3d_pos_time = np.append(psm_3d_position,float(time.time()))
 	psm_ghost_pose.append(psm_3d_pos_time)
 
 	psm_twist_list.append(mtm_velocity_xyz_angle_time)	
@@ -535,7 +539,7 @@ def normalize(value, min_val, max_val, corr):
 	return normalized_value
 
 
-def scale_cal(mode,distance_GP, velocity_psm, IPAL, IPAR,params,distance_psms=None):	
+def scale_cal(mode,distance_GP, velocity_psm, IPAL, IPAR, params, distance_psms=None):	
 
 	scaleArray = Float32MultiArray()
 	if mode == 1:
@@ -570,9 +574,9 @@ def scale_cal(mode,distance_GP, velocity_psm, IPAL, IPAR,params,distance_psms=No
 		N_p = normalize(IPA_m, params['p_min'], params['p_max'],1)
 		N_v = normalize(velocity_psm, params['v_min'], params['v_max'],1)
 
-		T_d = np.tan(0.49* np.pi * params['tau_d'] * N_d)  
-		T_p = np.tan(0.49* np.pi * params['tau_p'] * N_p)
-		T_v = np.tan(0.49* np.pi * params['tau_v'] * N_v)
+		T_d = np.tan(0.25* np.pi * params['tau_d'] * N_d+0.2*np.pi)  
+		T_p = np.tan(0.25* np.pi * params['tau_p'] * N_p+0.2*np.pi)
+		T_v = np.tan(0.25* np.pi * params['tau_v'] * N_v+0.2*np.pi)
 
 		weighted_sum = (
 			params['W_d'] * T_d +
@@ -580,18 +584,26 @@ def scale_cal(mode,distance_GP, velocity_psm, IPAL, IPAR,params,distance_psms=No
 			params['W_v'] * T_v +
 			params['W_dp'] * T_d * T_p +
 			params['W_dv'] * T_d * T_v +
-			params['W_pv'] * T_p * T_v +
-			params['W_dpv'] * T_d * T_p * T_v +
+			params['W_pv'] * T_p * T_v +			
 			params['C_offset']
 		)
 
-		output = params['Y_base'] * weighted_sum
+		#params['W_dpv'] * T_d * T_p * T_v +
+
+		if config.exflag != 0:
+			if params["AFflag"] == 1:
+				output = params['fixed_scale']
+			else:
+				output = params['Y_base'] * weighted_sum
+		else:
+			output = params['Y_base'] * weighted_sum
 
 		if float(time.time() - start_time) < 1:
 			scaleArray.data = [1]
 			return scaleArray
 		
-		scaleArray.data = [np.clip(output,0.1,4)]
+		#scaleArray.data = [0.5]
+		scaleArray.data = [np.clip(output,0.2,4)]
 
 	elif mode == 2:
 
@@ -665,6 +677,7 @@ def scale_cal(mode,distance_GP, velocity_psm, IPAL, IPAR,params,distance_psms=No
 			params['W_d'] * T_d_L +
 			params['W_p'] * T_p +
 			params['W_v'] * T_v_L +
+			params['W_s'] * T_s +
 			params['W_dps'] * T_d_L * T_p * T_s +
 			params['W_dvs'] * T_d_L * T_v_L * T_s +
 			params['W_pvs'] * T_p * T_v_L * T_s +
@@ -679,6 +692,7 @@ def scale_cal(mode,distance_GP, velocity_psm, IPAL, IPAR,params,distance_psms=No
 			params['W_d'] * T_d_R +
 			params['W_p'] * T_p +
 			params['W_v'] * T_v_R +
+			params['W_s'] * T_s +
 			params['W_dps'] * T_d_R * T_p * T_s  +
 			params['W_dvs'] * T_d_R * T_v_R * T_s  +
 			params['W_pvs'] * T_p * T_v_R * T_s  +
@@ -695,6 +709,9 @@ def scale_cal(mode,distance_GP, velocity_psm, IPAL, IPAR,params,distance_psms=No
 		return None	
 	
 	return scaleArray
+
+def sigmoid(x):
+	return 1 / (1 + np.exp(-x))
 
 def cal_performance_data(data):
 	"""
@@ -898,6 +915,11 @@ def save_data_cb():
 
 
 if __name__ == '__main__':
+	args = sys.argv[1:]
+
+	if len(args) > 0 :
+		exflag = float(args[0])
+
 	print("开始进行数据收集")
 	letter = input("是否开始数据收集（y or n）: ")
 	

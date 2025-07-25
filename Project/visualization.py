@@ -5,10 +5,20 @@ import socket
 import Project.ipa as ipa
 import pywt
 
-_ipa = np.load('./Project/data/ipaL_data.npy', allow_pickle=True)
-_v = np.load('./Project/data/psm_velocity_data.npy', allow_pickle=True)
-_d = np.load('./Project/data/distance_data.npy', allow_pickle=True)
-_s = np.load('./Project/data/scale_data.npy', allow_pickle=True)
+_ipa = np.load('./Project/data/ipaL_data.npy', allow_pickle=True)[90:]
+
+for i in range(len(_ipa)):
+    if _ipa[i] < 0.5:
+        _ipa[i] = _ipa[i-1]
+        
+_v = np.load('./Project/data/psm_velocity_data.npy', allow_pickle=True)[90:]
+_d = np.load('./Project/data/distance_data.npy', allow_pickle=True)[90:]
+_s = np.load('./Project/data/scale_data.npy', allow_pickle=True)[90:]
+
+for i in range(len(_ipa)):
+    if _ipa[i] != 1 and _ipa[i-1] == 1:
+        print(f"index:{i}")
+
 timestamps = range(len(_ipa))
 print(len(timestamps))
 
@@ -36,7 +46,7 @@ axs[1, 0].set_ylabel('Distance Values')
 
 # 绘制 _s 数据
 print(len(_s))
-axs[1, 1].scatter(timestamps, _s, c='purple', alpha=0.5, s=2)
+axs[1, 1].scatter(range(len(_s)), _s, c='purple', alpha=0.5, s=2)
 axs[1, 1].set_title('Scale Data')
 axs[1, 1].set_xlabel('Timestamps')
 axs[1, 1].set_ylabel('Scale Values')

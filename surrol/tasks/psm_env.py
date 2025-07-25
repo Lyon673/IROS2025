@@ -41,7 +41,8 @@ class PsmEnv(SurRoLGoalEnv):
     QPOS_PSM1 = (0, 0, 0.10, 0, 0, 0)
     POSE_TABLE = ((0.5, 0, 0.001), (0, 0, 0))
     # original limits
-    WORKSPACE_LIMITS1 = ((0.50, 0.60), (-0.05, 0.05), (0.675, 0.745))
+    #WORKSPACE_LIMITS1 = ((0.50, 0.60), (-0.05, 0.05), (0.675, 0.745))
+    WORKSPACE_LIMITS1 = ((0.30, 0.80), (-0.15, 0.15), (0.675, 0.745))
     #modified limits for peg_board
     # WORKSPACE_LIMITS1 = ((0.50, 0.60), (-0.05, 0.05), (0.675, 0.785))
     SCALING = 1.

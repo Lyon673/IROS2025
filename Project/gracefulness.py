@@ -64,7 +64,7 @@ def cal_GS():
     current_file_path = os.path.abspath(__file__)
     current_dir = os.path.dirname(current_file_path)
     data = np.load(os.path.join(current_dir, 'data', 'psm_ghost_pose.npy'), allow_pickle=True)
-    
+    #clutch = np.load(os.path.join(current_dir, 'data', 'clutch_times.npy'), allow_pickle=True)
     G, S = calculate_metrics(data)
 
     return G, S

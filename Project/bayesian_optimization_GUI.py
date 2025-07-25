@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from bayes_opt import BayesianOptimization
 from bayes_opt import UtilityFunction
+from bayes_opt import SequentialDomainReductionTransformer
 from bayes_opt.logger import JSONLogger
 from bayes_opt.event import Events
 from bayes_opt.util import load_logs
@@ -17,6 +18,8 @@ import numpy as np
 import os
 import threading
 import sys
+import json
+import random
 
 mode = 1
 
@@ -51,6 +54,9 @@ class BayesianOptimizationGUI:
 		
 		# Initialize the optimizer
 		self._initialize_optimizer()
+
+		self.assigner = RandomOutputAssigner()
+		self.AFflag = 0
 
 	def _configure_styles(self):
 		"""Configure ttk styles for the application for a better look and feel."""
@@ -223,11 +229,11 @@ class BayesianOptimizationGUI:
 		scores_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
 		
 		scores = [
-			("gracefulness Score:", "gracefulness_score"), 
-			("Smoothness Score:", "smoothness_score"),
-			("Clutch Times Score:", "clutch_times_score"),
-			("Total Distance Score:", "total_distance_score"),
-			("Total Time Score:", "total_time_score"),
+			("gracefulness Score(5):", "gracefulness_score"), 
+			("Smoothness Score(5):", "smoothness_score"),
+			("Clutch Times Score(15):", "clutch_times_score"),
+			("Total Distance Score(15):", "total_distance_score"),
+			("Total Time Score(10):", "total_time_score"),
 			("Total Score:", "total_score")
 		]
 		
@@ -250,30 +256,31 @@ class BayesianOptimizationGUI:
 		# Set parameter bounds
 			self.pbounds = config.oneHanded_range
 		else:
-			if mode != 2:
-				print(f"<LYON> ERROR: mode {mode} is not supported, automatically enter mode 2")
 			self.pbounds = config.twoHanded_range
+
 			
+		bounds_transformer = SequentialDomainReductionTransformer(minimum_window=0.1)
+
 		
-		# Initialize optimizer
-		self.optimizer = BayesianOptimization(
-			f=None,
-			pbounds=self.pbounds,
-			verbose=0,
-			random_state=1,
-		)
 
+		if mode != 3:
+			# Initialize optimizer
+			self.optimizer = BayesianOptimization(
+				f=None,
+				pbounds=self.pbounds,
+				verbose=0,
+				random_state=1,
+				bounds_transformer=bounds_transformer
+			)
+			# load the past optimization logs if they exist
+			if os.path.exists(self.log_file):
+				load_logs(self.optimizer, logs=[self.log_file])
+				print("<LYON> The optimizer is now aware of {} points.".format(len(self.optimizer.space)))
+			else: 
+				print("<LYON> No past optimization logs found, starting fresh.")
 
-		# load the past optimization logs if they exist
-		if os.path.exists(self.log_file):
-			load_logs(self.optimizer, logs=[self.log_file])
-			print("<LYON> The optimizer is now aware of {} points.".format(len(self.optimizer.space)))
-		else: 
-			print("<LYON> No past optimization logs found, starting fresh.")
-
-
-		logger = JSONLogger(path=self.log_file, reset=False)
-		self.optimizer.subscribe(Events.OPTIMIZATION_STEP, logger)
+			logger = JSONLogger(path=self.log_file, reset=False)
+			self.optimizer.subscribe(Events.OPTIMIZATION_STEP, logger)
 
 		
 		# Set utility function
@@ -281,7 +288,9 @@ class BayesianOptimizationGUI:
 		
 		# Define maximum values
 		self.gracefulness_max = config.scoreParams_bound['gracefulness_max']
+		self.gracefulness_min = config.scoreParams_bound['gracefulness_min']
 		self.smoothness_max = config.scoreParams_bound['smoothness_max']
+		self.smoothness_min = config.scoreParams_bound['smoothness_min']
 		self.clutch_times_max = config.scoreParams_bound['clutch_times_max']
 		self.total_distance_max = config.scoreParams_bound['total_distance_max']
 		self.total_time_max = config.scoreParams_bound['total_time_max']
@@ -307,19 +316,28 @@ class BayesianOptimizationGUI:
 			self.current_iter_label.config(text=f"{self.current_iteration}/{self.max_iterations}")
 			self.progress_bar['value'] = self.current_iteration
 			
-			# Get the next point to probe
-			self.next_point = self.optimizer.suggest(self.utility)
-			
-			# Update parameter display
-			self.params_text.config(state=tk.NORMAL)
-			self.params_text.delete(1.0, tk.END)
-			self.params_text.insert(tk.END, f"Iteration {self.current_iteration}/{self.max_iterations}\n\n")
-			for key, value in self.next_point.items():
-				self.params_text.insert(tk.END, f"{key:<12} = {value:.6f}\n")
-			self.params_text.config(state=tk.DISABLED)
-			
-			# Save parameters
-			self.save_params_to_txt(self.next_point)
+			if mode == 3:
+				adaptive_params = config.adaptive
+				adaptive_params["AFflag"] = 0
+				fixed_params = config.fixed
+				output = self.assigner.assign_random_output(adaptive=adaptive_params, fixed=fixed_params)
+				self.AFflag = output["AFflag"]
+				self.save_params_to_txt(output["params"])
+			else:
+
+				# Get the next point to probe
+				self.next_point = self.optimizer.suggest(self.utility)
+				
+				# Update parameter display
+				self.params_text.config(state=tk.NORMAL)
+				self.params_text.delete(1.0, tk.END)
+				self.params_text.insert(tk.END, f"Iteration {self.current_iteration}/{self.max_iterations}\n\n")
+				for key, value in self.next_point.items():
+					self.params_text.insert(tk.END, f"{key:<12} = {value:.6f}\n")
+				self.params_text.config(state=tk.DISABLED)
+				
+				# Save parameters
+				self.save_params_to_txt(self.next_point)
 			
 			# Switch to the NASA-TLX rating tab
 			self.tab_control.select(1)  # Select the 2nd tab (NASA-TLX rating)
@@ -331,7 +349,8 @@ class BayesianOptimizationGUI:
 			self.start_button.config(state=tk.NORMAL)
 			
 			# Show the best result
-			self.show_best_result()
+			if mode!=3:
+				self.show_best_result()
 	
 	def submit_scores(self):
 		"""Submits NASA-TLX scores and calculates the target value."""
@@ -364,15 +383,56 @@ class BayesianOptimizationGUI:
 			total_time = np.load(os.path.join(current_dir, 'data', 'total_time.npy'), allow_pickle=True)[0]
 			
 			# Calculate individual scores
-			gracefulness_score = 1.6 * 5 * np.clip((self.gracefulness_max - gracefulness) / (self.gracefulness_max - 2), 0, 1)
-			smoothness_score = 1.6 * 5 * np.clip((self.smoothness_max - smoothness) / (self.smoothness_max - 4), 0, 1)
-			clutch_times_score = 1.6 * 20 * np.clip((self.clutch_times_max - clutch_times + 1) / self.clutch_times_max, 0, 1)
-			total_distance_score = 1.6 * 10 * np.clip((self.total_distance_max - total_distance) / self.total_distance_max, 0, 1)
-			total_time_score = 1.6 * 10 * np.clip((self.total_time_max - total_time) / self.total_time_max, 0, 1)
+			gracefulness_score =  5 * np.clip((self.gracefulness_max - gracefulness) / (self.gracefulness_max - self.gracefulness_min), 0, 1)
+			smoothness_score = 5 * np.clip((self.smoothness_max - smoothness) / (self.smoothness_max - self.smoothness_min), 0, 1)
+			clutch_times_score = 15 * np.clip((self.clutch_times_max - clutch_times + 1) / self.clutch_times_max, 0, 1)
+			total_distance_score = 15 * np.clip((self.total_distance_max - total_distance) / self.total_distance_max, 0, 1)
+			total_time_score = 10 * np.clip((self.total_time_max - total_time) / self.total_time_max, 0, 1)
 			
 			# Calculate the total score
-			total_score = 0.2 * sub_score + gracefulness_score + smoothness_score + clutch_times_score + total_distance_score + total_time_score
+			total_score = 0.5 * sub_score + gracefulness_score + smoothness_score + clutch_times_score + total_distance_score + total_time_score
+
+			output_json_path = os.path.join(current_dir, 'BayesianLog',config.scorefilename)
+
+			new_entry = {
+				"AFflag": float(self.AFflag),
+				"subscore": float(sub_score),
+				"gracefulness": float(gracefulness),
+				"smoothness": float(smoothness),
+				"clutch_times": float(clutch_times),
+				"total_distance": float(total_distance),
+				"total_time": float(total_time),
+				"gracefulness_score": float(gracefulness_score),
+				"smoothness_score": float(smoothness_score),
+				"clutch_times_score": float(clutch_times_score),
+				"total_distance_score": float(total_distance_score),
+				"total_time_score": float(total_time_score),
+				"total_score": float(total_score),
+				"fixed_scale": float(config.fixed["fixed_scale"]) if mode == 3 else None,
+			}
 			
+			existing_data = []
+			if os.path.exists(output_json_path):
+				try:
+					with open(output_json_path, 'r', encoding='utf-8') as f:
+						existing_data = json.load(f)
+				except json.JSONDecodeError:
+					
+					existing_data = []
+				except Exception as e:
+					print(f"JSON error: {e}")
+					existing_data = []
+
+			existing_data.append(new_entry)
+
+			try:
+				with open(output_json_path, 'w', encoding='utf-8') as f:
+					json.dump(existing_data, f, ensure_ascii=False, indent=4)
+				print(f"scores are saved in : {output_json_path}")
+			except Exception as e:
+				print(f"JSON error: {e}")
+        
+
 			# Update the UI display
 			self.gracefulness_value.config(text=f"{gracefulness:.4f}")
 			self.smoothness_value.config(text=f"{smoothness:.4f}")
@@ -387,17 +447,18 @@ class BayesianOptimizationGUI:
 			self.total_time_score.config(text=f"{total_time_score:.4f}")
 			self.total_score.config(text=f"{total_score:.4f}")
 			
-			# Register the result with the optimizer
-			self.optimizer.register(params=self.next_point, target=total_score)
+			if mode != 3:
+				# Register the result with the optimizer
+				self.optimizer.register(params=self.next_point, target=total_score)
 			
-			# If there are more iterations, enable the "Next" button
-			if self.current_iteration < self.max_iterations:
-				self.next_button.config(state=tk.NORMAL)
-			else:
-				self.show_best_result()
-				self.next_button.config(state=tk.DISABLED)
-				self.stop_button.config(state=tk.DISABLED)
-				self.start_button.config(state=tk.NORMAL)
+				# If there are more iterations, enable the "Next" button
+				if self.current_iteration < self.max_iterations:
+					self.next_button.config(state=tk.NORMAL)
+				else:
+					self.show_best_result()
+					self.next_button.config(state=tk.DISABLED)
+					self.stop_button.config(state=tk.DISABLED)
+					self.start_button.config(state=tk.NORMAL)
 				
 		except Exception as e:
 			messagebox.showerror("Error", f"Error calculating performance metrics: {str(e)}")
@@ -422,7 +483,7 @@ class BayesianOptimizationGUI:
 			self.start_button.config(state=tk.NORMAL)
 			
 			# If there are already some results, show the best one so far
-			if hasattr(self, 'optimizer') and self.optimizer and len(self.optimizer.res) > 0:
+			if hasattr(self, 'optimizer') and self.optimizer and len(self.optimizer.res) > 0 and mode!=3:
 				self.show_best_result()
 	
 	def save_params_to_txt(self, dic):
@@ -436,6 +497,42 @@ class BayesianOptimizationGUI:
 		
 		print(f"Parameters saved to {self.params_file}")
 
+class RandomOutputAssigner:
+    def __init__(self):
+        # 初始化计数器，记录adaptive和fixed被选择的次数
+        self.adaptive_count = 0
+        self.fixed_count = 0
+        # 初始化一个列表，用于存储接下来10次运行的赋值顺序
+        self.assignment_order = []
+        self._generate_assignment_order() # 在初始化时生成一次顺序
+
+    def _generate_assignment_order(self):
+        """内部方法：生成10次运行的随机赋值顺序，确保adaptive和fixed各5次"""
+        self.assignment_order = ['adaptive'] * 5 + ['fixed'] * 5
+        random.shuffle(self.assignment_order) # 随机打乱顺序
+        # 重置计数器，以便新的10次循环开始
+        self.adaptive_count = 0
+        self.fixed_count = 0
+
+    def assign_random_output(self, adaptive, fixed):
+
+        # 如果已经完成了10次循环，则重新生成顺序
+        if self.adaptive_count + self.fixed_count >= 10:
+            self._generate_assignment_order()
+
+        # 从预生成的顺序中获取当前次序的赋值类型
+        current_assignment_type = self.assignment_order[self.adaptive_count + self.fixed_count]
+
+        if current_assignment_type == 'adaptive':
+            self.adaptive_count += 1
+            output = { "params":adaptive, "AFflag": 0}
+            print(f"select 'adaptive' ({self.adaptive_count}/5)")
+        else: # current_assignment_type == 'fixed'
+            self.fixed_count += 1
+            output = { "params":fixed, "AFflag": 1}
+            print(f"select 'fixed' ({self.fixed_count}/5)")
+
+        return output
 
 def main():
 	args = sys.argv[1:]
@@ -444,6 +541,7 @@ def main():
 		global mode
 		mode = float(args[0])
 
+	
 	root = tk.Tk()
 	app = BayesianOptimizationGUI(root)
 	root.mainloop()

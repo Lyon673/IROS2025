@@ -62,6 +62,8 @@ class Application(ShowBase):
             gl-use-bindless-texture 1
             prefer-texture-buffer 1
             audio-library-name null
+            sync-video false
+            gl-sync-video false
             """)
 
         super(Application, self).__init__()

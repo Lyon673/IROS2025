@@ -13,6 +13,7 @@ from panda3d.core import AmbientLight, DirectionalLight, Spotlight, PerspectiveL
 import math
 import imageio
 import time
+import matplotlib.pyplot as plt
 
 from surrol.gui.scene import Scene, GymEnvScene
 from surrol.gui.application import Application, ApplicationConfig
@@ -1799,16 +1800,21 @@ class SurgicalSimulatorBase(GymEnvScene):
     def get_world_coordinate_from_gaze(self, gaze_x, gaze_y):
             try:
                 width, height = self.resolutionx, self.resolutiony
+
+
                 
                 
-                _, _, _, depth_buffer, _ = p.getCameraImage(
+                _, _, rgb, depth_buffer, _ = p.getCameraImage(
                     width=width, 
                     height=height,
-                    viewMatrix=self.env._view_matrix,
-                    projectionMatrix=self.env._proj_matrix,
+                    viewMatrix=self.env.ecm.view_matrix,
+                    projectionMatrix=self.env.ecm.proj_matrix,
                     renderer=p.ER_BULLET_HARDWARE_OPENGL
                 )
-                
+                rgb_array = np.array(rgb, dtype=np.uint8)
+                rgb_array = np.reshape(rgb_array, (height, width, 4))  # RGBA
+                rgb_array = rgb_array[:, :, :3]     
+                #print(f"<LYON> rgb_array: {rgb_array}")
                 
                 pixel_x = int(gaze_x * width)
                 pixel_y = int(gaze_y * height)
@@ -1825,30 +1831,9 @@ class SurgicalSimulatorBase(GymEnvScene):
                 far = 20
                 depth_value = far * near / (far - (far - near) * depth)
 
-                """# the actual depth value in the camera space
-                )
-                proj_matrix = np.array(self.env._proj_matrix).reshape(4, 4).T
-                
-                pixel_vector = np.array([gaze_x, gaze_y]).T* 2-1
-                right_vector = pixel_vector*(proj_matrix[3][2]*depth_value+proj_matrix[3][3])
-                tmp_vector = right_vector-np.array([proj_matrix[0][2]*depth_value+proj_matrix[0][3],proj_matrix[1][2]*depth_value+proj_matrix[1][3]]).T
-                w_vector = np.array([[proj_matrix[0][0],proj_matrix[0][1]],[proj_matrix[1][0],proj_matrix[1][1]]])-np.dot(pixel_vector,np.array([proj_matrix[3][0],proj_matrix[3][1]]))
-                r = np.dot(np.linalg.inv(w_vector),tmp_vector)
-                p_v = np.array([r[0],r[1],depth_value,1]).T
-
-                
-                view_matrix = np.array(self.env._view_matrix).reshape(4, 4).T
-
-                inv_view = np.linalg.inv(view_matrix)
-                
-                
-                
-                world_pos = np.dot(inv_view, p_v).T"""
-
-           
-                ndc_x = (2.0 * pixel_x / width) - 1.0
+                ndc_x = -(2.0 * pixel_x / width) + 1.0
                 ndc_y = -1.0 + (2.0 * pixel_y / height) 
-                ndc_z = 2.0 * depth - 1.0
+                ndc_z = -2.0 * depth_value + 1.0
                 
            
                 ndc = np.array([ndc_x, ndc_y, ndc_z, 1.0])
@@ -1856,12 +1841,11 @@ class SurgicalSimulatorBase(GymEnvScene):
                 view_matrix = np.array(self.env._view_matrix).reshape(4, 4).T
                
                 proj_matrix = np.array(self.env._proj_matrix).reshape(4, 4).T
-                view_matrix_np = np.array(view_matrix).reshape(4, 4).T
                 
                 inv_proj = np.linalg.inv(proj_matrix)
                 
                 
-                inv_view = np.linalg.inv(view_matrix_np)
+                inv_view = np.linalg.inv(view_matrix)
                 
                
                 eye_pos = np.dot(inv_proj, ndc)
@@ -1876,14 +1860,21 @@ class SurgicalSimulatorBase(GymEnvScene):
                     world_pos = world_pos[:3]
                 
                
-                toplinkL_state = p.getLinkState(self.env.psm1.body, 6)[0]
-                toplinkR_state = p.getLinkState(self.env.psm1.body, 7)[0]
-                psm_pos = [(toplinkL_state[0] + toplinkR_state[0]) / 2, (toplinkL_state[1] + toplinkR_state[1]) / 2, (toplinkL_state[2] + toplinkR_state[2]) / 2]
-                np.set_printoptions(suppress=True, precision=10)
+                #toplinkL_state = p.getLinkState(self.env.psm1.body, 6)[0]
+                #toplinkR_state = p.getLinkState(self.env.psm1.body, 7)[0]
+                #psm_pos = [(toplinkL_state[0] + toplinkR_state[0]) / 2, (toplinkL_state[1] + toplinkR_state[1]) / 2, (toplinkL_state[2] + toplinkR_state[2]) / 2]
+                #np.set_printoptions(suppress=True, precision=10)
                 
-                return world_pos
+                #print(f"<LYON> world_pos is : {world_pos}")
+                print("--------------------------------")
+                print(f"<LYON> gaze pos: {world_pos[0]:.3f}, {world_pos[1]:.3f}, {world_pos[2]:.3f}")
+                psmpos_2d_ratio = self.cal_3dto2d(world_pos[0],world_pos[1],world_pos[2])
+                psmpos_2d = [(psmpos_2d_ratio[0]+1)*self.resolutionx/2, (psmpos_2d_ratio[1]+1)*(self.resolutiony-44)/2+22]
+                print(f"<LYON> gaze_2d: {psmpos_2d[0]:.3f}, {psmpos_2d[1]:.3f}")
+                return world_pos, rgb_array
                 
             except Exception as e:
+                print(f"<LYON> error: {e}")
                 import traceback
                 traceback.print_exc()
                 return None
@@ -2088,9 +2079,18 @@ class SurgicalSimulator(SurgicalSimulatorBase):
         return Task.cont
 
     def publish_data(self, retrived_action,gaze_x,gaze_y):
-        world_position=self.get_world_coordinate_from_gaze(gaze_x,gaze_y)
+        world_position,rgb_array=self.get_world_coordinate_from_gaze(gaze_x,gaze_y)
+        #print(rgb_array.shape, rgb_array.dtype, rgb_array.min(), rgb_array.max())
+
+        # plt.imshow(rgb_array)
+        # plt.axis('off')
+        # plt.show()
         #print(f"<LYON> {p.getLinkState(self.env.psm1.body, 6)[0]}")
         #print(f"<LYON> retrived_action is :{retrived_action}")
+        yaw_velocity = p.getJointState(self.env.psm1.body, 0)[1]
+        # if np.abs(v)>0.01:
+        #     print(f":<LYON> joint :{p.getJointInfo(self.env.psm1.body, 0)}")
+        #     print(f"<LYON> yaw v: {v}")
         toplinkL_state = p.getLinkState(self.env.psm1.body, 6)[0]
         toplinkR_state = p.getLinkState(self.env.psm1.body, 7)[0]
         toplink_state = [(toplinkL_state[0] + toplinkR_state[0]) / 2, (toplinkL_state[1] + toplinkR_state[1]) / 2, (toplinkL_state[2] + toplinkR_state[2]) / 2]
@@ -2106,7 +2106,7 @@ class SurgicalSimulator(SurgicalSimulatorBase):
         msg.layout.dim[0].label = "touch"
         
         # data defination
-        msg.data = [float(time.time())]
+        msg.data = [10086]
         msg.data.extend([self.touch_flag])
         msg.data.extend([float(retrived_action[0]), float(retrived_action[1]), float(retrived_action[2]), float(retrived_action[3]), float(retrived_action[4])])
         msg.data.extend([float(toplink_state[0]), float(toplink_state[1]), float(toplink_state[2])])
@@ -2115,13 +2115,17 @@ class SurgicalSimulator(SurgicalSimulatorBase):
         self.pub.publish(msg)
 
         # TEST PRINT  
+        
+        print(f"<LYON> psmpos_2d: {psmpos_2d[0]:.3f}, {psmpos_2d[1]:.3f}")
+        print(f"<LYON> toplink_state: {toplink_state[0]:.3f}, {toplink_state[1]:.3f}, {toplink_state[2]:.3f}")
+        
         msg_test = Float32MultiArray()
         msg_test.layout.dim = [MultiArrayDimension()]
-        msg_test.layout.dim[0].size = 2
-        msg_test.layout.dim[0].stride = 2
+        msg_test.layout.dim[0].size = 6
+        msg_test.layout.dim[0].stride = 6
         msg_test.layout.dim[0].label = "test"
 
-        msg_test.data = [float(psmpos_2d[0]), float(psmpos_2d[1])]
+        msg_test.data = [float(toplink_state[0]), float(toplink_state[1]), float(toplink_state[2]), float(world_position[0]), float(world_position[1]), float(world_position[2])]
         self.pubtest.publish(msg_test)
     
     def set_scale(self,scale):
@@ -2441,7 +2445,7 @@ class SurgicalSimulatorBimanual(SurgicalSimulatorBase):
         # haptic left
         retrived_action = np.array([0, 0, 0, 0, 0], dtype = np.float32)
         getDeviceAction_left(retrived_action)
-        print(f"<LYON> retrived_actionL is :{retrived_action}")
+        #print(f"<LYON> retrived_actionL is :{retrived_action}")
         # retrived_action-> x,y,z, angle, buttonState(0,1,2)
         if self.demo:
             obs = self.env._get_obs()
@@ -2468,7 +2472,7 @@ class SurgicalSimulatorBimanual(SurgicalSimulatorBase):
         # # haptic right
         retrived_action = np.array([0, 0, 0, 0, 0], dtype = np.float32)
         getDeviceAction_right(retrived_action)
-        print(f"<LYON> retrived_actionR is :{retrived_action}")
+        #print(f"<LYON> retrived_actionR is :{retrived_action}")
         # retrived_action-> x,y,z, angle, buttonState(0,1,2)
         if retrived_action[4] == 2:
             self.psm2_action[0] = 0
@@ -2611,7 +2615,7 @@ app_cfg = ApplicationConfig(window_width=w, window_height=h)
 app = Application(app_cfg)
 props = WindowProperties()
 props.setSize(w, h)
-props.setOrigin(2560, 0)  
+# props.setOrigin(0, 0)  
 app.win.requestProperties(props)
 open_scene(0)
 app.run()

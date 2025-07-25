@@ -62,8 +62,8 @@ class PickAndPlace(PsmEnv):
         # robot
         workspace_limits = self.workspace_limits1
         pos = (workspace_limits[0][0],
-               workspace_limits[1][1],
-               (workspace_limits[2][1] + workspace_limits[2][0]) / 2)
+               workspace_limits[1][0],
+               (workspace_limits[2][1]-workspace_limits[2][0])/3 + workspace_limits[2][0])
         orn = (0.5, 0.5, -0.5, -0.5)
         joint_positions = self.psm1.inverse_kinematics((pos, orn), self.psm1.EEF_LINK_INDEX)
         self.psm1.reset_joint(joint_positions)
@@ -110,15 +110,15 @@ class PickAndPlace(PsmEnv):
 
         for i in range(1,6):
             
-            if(i<=2):
+            if(i<=3):
                 pick_item = p.loadURDF(os.path.join(ASSET_DIR_PATH, 'CH4/CH4_waypoints.urdf'),
-                            (workspace_limits[0].mean() - i/3 * 0.25,  # TODO: scaling
+                            (workspace_limits[0].mean() - i/3 * 0.2,  # TODO: scaling
                              workspace_limits[1].mean() -i/3*0.15,
                              workspace_limits[2][0] + 0.05),
                             p.getQuaternionFromEuler((0, 0, yaw)),
                             useFixedBase=False,
                             globalScaling=self.SCALING)
-                p.changeVisualShape(pick_item, -1, specularColor=(80, 80, 80))
+                p.changeVisualShape(pick_item, -1,rgbaColor=(0,1,0,1), specularColor=(80, 80, 80))
                 self.obj_ids['rigid'].append(pick_item)
             else:
                 pick_item = p.loadURDF(os.path.join(ASSET_DIR_PATH, 'CH4/CH4_waypoints.urdf'),
@@ -128,7 +128,7 @@ class PickAndPlace(PsmEnv):
                             p.getQuaternionFromEuler((0, 0, yaw)),
                             useFixedBase=False,
                             globalScaling=self.SCALING)
-                p.changeVisualShape(pick_item,-1,rgbaColor=(0,1,0,1),specularColor=(80,80,80))
+                p.changeVisualShape(pick_item,-1,specularColor=(80,80,80))
                 self.obj_ids['rigid'].append(pick_item)
 
     def _sample_goal(self) -> np.ndarray:
